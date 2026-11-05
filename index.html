@@ -20611,6 +20611,31 @@ input[type=date],input[type=month]{cursor:pointer}
 #inapp.on{display:block}
 .bigbtn{display:block;width:100%;text-align:center;background:var(--grad);color:#fff!important;font-weight:700;font-size:17px;padding:14px;border-radius:10px;border:0;text-decoration:none;margin:10px 0;cursor:pointer;font-family:inherit}
 .bigbtn.sec{background:#e9eef5;color:var(--blue)!important}
+
+.dpin{cursor:pointer;background:#fff}
+.dfb{display:block}
+.cal-ov{position:fixed;inset:0;background:rgba(15,25,45,.55);z-index:9999;display:flex;align-items:center;justify-content:center;padding:12px}
+.cal{background:#fff;border-radius:14px;padding:14px;width:min(100%,340px);box-shadow:0 10px 40px rgba(0,0,0,.35);font-family:inherit;color:#1c2733}
+.cal-title{font-weight:700;font-size:16px;margin-bottom:10px;color:var(--navy,#1F3A5F)}
+.cal-bar{display:flex;gap:6px;align-items:center;margin-bottom:10px}
+.cal-bar select{flex:1;min-width:0;min-height:44px;padding:6px 8px}
+.cal-nav{width:44px;min-height:44px;border:1px solid #b8c4d0;background:#f3f6fb;border-radius:8px;font-size:22px;line-height:1;cursor:pointer;color:#1F3A5F;flex:none;padding:0}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal-grid.cal-months{grid-template-columns:repeat(3,1fr)}
+.cal-wd{text-align:center;font-size:12px;font-weight:700;color:#6a7a8a;padding:4px 0}
+.cal-day{min-height:42px;border:1px solid transparent;background:#f3f6fb;border-radius:8px;font:inherit;font-size:16px;cursor:pointer;color:#1c2733;padding:0}
+.cal-months .cal-day{min-height:48px}
+.cal-day:hover{border-color:#1F3A5F}
+.cal-day.on{background:#1F3A5F;color:#fff;font-weight:700}
+.cal-foot{display:flex;gap:8px;margin-top:12px}
+.cal-btn{flex:1;min-height:46px;border:1px solid #b8c4d0;background:#fff;border-radius:8px;font:inherit;font-weight:700;cursor:pointer;color:#1F3A5F}
+.cal-btn.pri{background:#1F3A5F;color:#fff;border-color:#1F3A5F}
+.fhide{position:absolute!important;opacity:0;width:1px!important;height:1px!important;min-height:0!important;padding:0!important;border:0!important;pointer-events:none}
+.fpick{display:flex;align-items:center;gap:10px;border:1px solid #b8c4d0;border-radius:6px;padding:6px 8px;background:#fff;min-height:48px}
+.fbtn{background:#e9eef5;color:#1F3A5F;border:1px solid #b8c4d0;border-radius:6px;font:inherit;font-weight:700;padding:8px 12px;cursor:pointer;flex:none}
+.fname{font-size:14px;color:#6a7a8a;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.fpick.has .fname{color:#1c2733}
+input.fhide.invalid + .fpick{border-color:var(--err);background:#fff5f4}
 </style>
 </head>
 <body class="notranslate">
@@ -20696,12 +20721,6 @@ input[type=date],input[type=month]{cursor:pointer}
 </fieldset>
 
 <fieldset>
-<legend>Studium (optional)</legend>
-<div id="uniList"></div>
-<button type="button" class="add" id="addUni">+ Studium hinzufügen</button>
-</fieldset>
-
-<fieldset>
 <legend>Dokumente</legend>
 <p class="hint" style="margin:0 0 14px">Maximal 5 MB pro Datei. Ihre Dokumente werden nur auf Ihrem Gerät zu einem Paket gebündelt und nicht auf einen Server hochgeladen.</p>
 <div class="grid">
@@ -20739,7 +20758,7 @@ const esc = s => String(s ?? "").trim();
 
 /* ===== Datumsfelder: nur Kalender, kein Tippen ===== */
 const typeOk = t => { const i = document.createElement("input"); i.setAttribute("type", t); return i.type === t; };
-const PICKER_OK = {date: typeOk("date"), month: typeOk("month")};
+const PICKER_OK = {date: false, month: false}; /* immer eigener deutscher Kalender */
 const MONTHS_DE = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober", "November", "Dezember"];
 const RE_DATE = /^\d{4}-\d{2}-\d{2}$/, RE_MONTH = /^\d{4}-\d{2}$/;
 
@@ -20759,34 +20778,95 @@ function lockPicker(el){
   el.setAttribute("autocomplete", "off");
 }
 
+const WD_DE = ["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"];
+const MON_SHORT = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+let calEl = null;
+function closeCal(){ if (calEl) { calEl.remove(); calEl = null; document.removeEventListener("keydown", calKey, true); } }
+function calKey(e){ if (e.key === "Escape") { e.preventDefault(); closeCal(); } }
+function mkEl(tag, cls, txt){ const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; }
+function openCal(input, kind, show){
+  closeCal();
+  const cur = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(input.value || "");
+  const now = new Date();
+  let vy = cur ? +cur[1] : (input.name === "geburtsdatum" ? 1995 : now.getFullYear());
+  let vm = cur ? +cur[2] - 1 : (input.name === "geburtsdatum" ? 0 : now.getMonth());
+  const sel = cur ? input.value : "";
+  const ov = mkEl("div", "cal-ov"); const box = mkEl("div", "cal"); ov.appendChild(box);
+  ov.addEventListener("mousedown", e => { if (e.target === ov) closeCal(); });
+  ov.addEventListener("touchstart", e => { if (e.target === ov) closeCal(); }, {passive: true});
+  const title = mkEl("div", "cal-title", kind === "date" ? "Datum wählen" : "Monat wählen"); box.appendChild(title);
+  const bar = mkEl("div", "cal-bar");
+  const prev = mkEl("button", "cal-nav", "‹"), next = mkEl("button", "cal-nav", "›");
+  prev.type = next.type = "button"; prev.setAttribute("aria-label", "Zurück"); next.setAttribute("aria-label", "Weiter");
+  const sM = document.createElement("select"), sY = document.createElement("select");
+  sM.setAttribute("aria-label", "Monat"); sY.setAttribute("aria-label", "Jahr");
+  MONTHS_DE.forEach((m, i) => sM.appendChild(new Option(m, i)));
+  for (let y = now.getFullYear() + 6; y >= 1940; y--) sY.appendChild(new Option(String(y), y));
+  if (kind === "month") { bar.appendChild(prev); bar.appendChild(sY); bar.appendChild(next); }
+  else { bar.appendChild(prev); bar.appendChild(sM); bar.appendChild(sY); bar.appendChild(next); }
+  box.appendChild(bar);
+  const grid = mkEl("div", kind === "date" ? "cal-grid" : "cal-grid cal-months"); box.appendChild(grid);
+  const pick = v => { show(v); closeCal(); input.dispatchEvent(new Event("change", {bubbles: true})); try { input.nextElementSibling.focus(); } catch (e) {} };
+  const p2 = n => String(n).padStart(2, "0");
+  function draw(){
+    sM.value = vm; sY.value = vy; grid.textContent = "";
+    if (kind === "date") {
+      WD_DE.forEach(w => grid.appendChild(mkEl("div", "cal-wd", w)));
+      const first = (new Date(vy, vm, 1).getDay() + 6) % 7, days = new Date(vy, vm + 1, 0).getDate();
+      for (let i = 0; i < first; i++) grid.appendChild(mkEl("div", "cal-empty"));
+      for (let d = 1; d <= days; d++) {
+        const iso = vy + "-" + p2(vm + 1) + "-" + p2(d);
+        const b = mkEl("button", "cal-day" + (iso === sel ? " on" : ""), String(d)); b.type = "button";
+        b.addEventListener("click", () => pick(iso)); grid.appendChild(b);
+      }
+    } else {
+      MON_SHORT.forEach((m, i) => {
+        const iso = vy + "-" + p2(i + 1);
+        const b = mkEl("button", "cal-day" + (iso === sel ? " on" : ""), m); b.type = "button";
+        b.setAttribute("aria-label", MONTHS_DE[i] + " " + vy);
+        b.addEventListener("click", () => pick(iso)); grid.appendChild(b);
+      });
+    }
+  }
+  const step = d => { if (kind === "month") vy += d; else { vm += d; if (vm < 0) { vm = 11; vy--; } if (vm > 11) { vm = 0; vy++; } } vy = Math.max(1940, Math.min(now.getFullYear() + 6, vy)); draw(); };
+  prev.addEventListener("click", () => step(-1)); next.addEventListener("click", () => step(1));
+  sM.addEventListener("change", () => { vm = +sM.value; draw(); }); sY.addEventListener("change", () => { vy = +sY.value; draw(); });
+  const foot = mkEl("div", "cal-foot");
+  const clr = mkEl("button", "cal-btn", "Löschen"), cls = mkEl("button", "cal-btn pri", "Schließen"); clr.type = cls.type = "button";
+  clr.addEventListener("click", () => pick("")); cls.addEventListener("click", closeCal);
+  foot.appendChild(clr); foot.appendChild(cls); box.appendChild(foot);
+  draw(); document.body.appendChild(ov); calEl = ov;
+  document.addEventListener("keydown", calKey, true);
+}
+function fmtShow(v){
+  const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(v || "");
+  if (!m) return "";
+  return m[3] ? m[3] + "." + m[2] + "." + m[1] : MONTHS_DE[+m[2] - 1] + " " + m[1];
+}
 function dateFallback(input){
   const kind = input.getAttribute("type");
   const wrap = document.createElement("div"); wrap.className = "dfb";
-  const mk = (label, opts) => {
-    const s = document.createElement("select"); s.setAttribute("aria-label", label);
-    s.appendChild(new Option(label, ""));
-    opts.forEach(o => s.appendChild(new Option(o[1], o[0])));
-    return s;
-  };
-  const years = []; for (let y = new Date().getFullYear() + 6; y >= 1940; y--) years.push([String(y), String(y)]);
-  const sD = kind === "date" ? mk("Tag", Array.from({length: 31}, (_, i) => [String(i + 1).padStart(2, "0"), String(i + 1)])) : null;
-  const sM = mk("Monat", MONTHS_DE.map((m, i) => [String(i + 1).padStart(2, "0"), m]));
-  const sY = mk("Jahr", years);
-  const sels = [sD, sM, sY].filter(Boolean);
-  const compose = () => {
-    input.value = sels.every(s => s.value) ? (sD ? sY.value + "-" + sM.value + "-" + sD.value : sY.value + "-" + sM.value) : "";
-    input.dispatchEvent(new Event("change", {bubbles: true}));
-  };
-  sels.forEach(s => { s.addEventListener("change", compose); wrap.appendChild(s); });
+  const vis = document.createElement("input");
+  vis.type = "text"; vis.className = "dpin"; vis.setAttribute("autocomplete", "off"); vis.setAttribute("inputmode", "none");
+  vis.setAttribute("placeholder", kind === "date" ? "Im Kalender wählen" : "Im Kalender wählen");
+  vis.setAttribute("aria-label", "Datum im Kalender wählen");
+  vis.dataset.dtv = kind;
+  const show = v => { input.value = v || ""; vis.value = fmtShow(v); };
+  const open = () => openCal(input, kind, show);
+  vis.addEventListener("click", open);
+  vis.addEventListener("keydown", e => {
+    if (e.ctrlKey || e.metaKey || e.altKey || /^F\d+$/.test(e.key) || e.key === "Tab" || e.key === "Escape") return;
+    e.preventDefault();
+    if (e.key === "Backspace" || e.key === "Delete") { show(""); input.dispatchEvent(new Event("change", {bubbles: true})); }
+    else if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") open();
+  });
+  ["paste", "cut", "drop", "beforeinput"].forEach(n => vis.addEventListener(n, e => e.preventDefault()));
+  wrap.appendChild(vis);
   input.setAttribute("type", "hidden");
   input.parentNode.insertBefore(wrap, input.nextSibling);
   input._fb = {
-    set(v){
-      const m = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(v || "");
-      sY.value = m ? m[1] : ""; sM.value = m ? m[2] : ""; if (sD) sD.value = m && m[3] ? m[3] : "";
-      compose();
-    },
-    sync(){ sels.forEach(s => { s.disabled = input.disabled; s.required = input.required; }); }
+    set(v){ show(/^\d{4}-\d{2}(-\d{2})?$/.test(v || "") ? v : ""); input.dispatchEvent(new Event("change", {bubbles: true})); },
+    sync(){ vis.disabled = input.disabled; vis.required = input.required; }
   };
   input._fb.sync();
 }
@@ -20978,7 +21058,6 @@ function collect(kind){
 }
 $("#addExp").onclick = () => addBlock("exp");
 $("#addEdu").onclick = () => addBlock("edu");
-$("#addUni").onclick = () => addBlock("uni");
 addBlock("exp"); addBlock("edu");
 
 /* ===== Zertifikat nur Pflicht, wenn "Zertifiziert" ===== */
@@ -21264,6 +21343,18 @@ async function buildPdf(d){
   return new Blob([doc.output("arraybuffer")], {type: "application/pdf"});
 }
 
+
+/* ===== Dateiauswahl in deutscher Sprache ===== */
+document.querySelectorAll('input[type=file]').forEach(inp => {
+  inp.classList.add("fhide");
+  const box = mkEl("div", "fpick"), btn = mkEl("button", "fbtn", inp.multiple ? "Dateien auswählen" : "Datei auswählen"), nm = mkEl("span", "fname", "Keine Datei");
+  btn.type = "button"; btn.addEventListener("click", () => inp.click());
+  box.appendChild(btn); box.appendChild(nm); inp.parentNode.insertBefore(box, inp.nextSibling);
+  const upd = () => { const n = inp.files ? inp.files.length : 0; nm.textContent = n === 0 ? "Keine Datei" : n === 1 ? inp.files[0].name : n + " Dateien ausgewählt"; box.classList.toggle("has", n > 0); };
+  inp.addEventListener("change", upd); inp.form && inp.form.addEventListener("reset", () => setTimeout(upd, 0));
+  inp._upd = upd;
+});
+
 /* ===== Dokumente (max. 5 MB pro Datei) ===== */
 const MAXB = 5 * 1024 * 1024;
 const DOCS = [
@@ -21310,11 +21401,11 @@ DOCS.forEach(def => {
     for (const f of el.files) {
       if (!def.types.includes(extOf(f))) {
         err.textContent = `„${f.name}“: Dateityp nicht erlaubt (erlaubt: ${def.types.filter(t => t !== "jpeg").join(", ").toUpperCase()}).`;
-        el.value = ""; return;
+        el.value = ""; el._upd && el._upd(); return;
       }
       if (f.size > MAXB) {
         err.textContent = `„${f.name}“ ist zu groß (${(f.size / 1048576).toFixed(1)} MB). Maximal 5 MB pro Datei erlaubt.`;
-        el.value = ""; return;
+        el.value = ""; el._upd && el._upd(); return;
       }
     }
   });
@@ -21376,7 +21467,7 @@ async function applyImport(zip, prefix, data){
   $("#photoPrev").style.display = "none";
   FIELD_NAMES.forEach(k => { const el = form.elements[k]; if (el) fillField(el, f[k]); });
   syncCert();
-  ["exp", "edu", "uni"].forEach(kind => {
+  ["exp", "edu"].forEach(kind => {
     $(LISTS[kind]).innerHTML = "";
     const arr = Array.isArray(data[kind]) ? data[kind].slice(0, 20) : [];
     if (!arr.length && MIN[kind]) arr.push({});
@@ -21469,7 +21560,7 @@ function msgFor(el){
   if (el.type === "checkbox") return "Bitte bestätigen.";
   if (el.validity && el.validity.typeMismatch) return "Bitte eine gültige E-Mail-Adresse eingeben.";
   if (el.tagName === "SELECT") return "Bitte auswählen.";
-  if (el.dataset.dt) return "Bitte im Kalender auswählen.";
+  if (el.dataset.dt || el.dataset.dtv) return "Bitte im Kalender auswählen.";
   return "Bitte ausfüllen.";
 }
 function todayStr(){ const n = new Date(); return n.getFullYear() + "-" + String(n.getMonth() + 1).padStart(2, "0") + "-" + String(n.getDate()).padStart(2, "0"); }
@@ -21483,14 +21574,14 @@ function problems(){
   form.querySelectorAll("input,textarea").forEach(el => { if (isTextLike(el) && hasArabic(el.value)) add(el, "Arabische Schrift ist nicht erlaubt."); });
   const gd = form.elements["geburtsdatum"];
   if (gd && RE_DATE.test(gd.value) && gd.value > todayStr()) add(gd, "Das Geburtsdatum darf nicht in der Zukunft liegen.");
-  ["exp", "edu", "uni"].forEach(kind => document.querySelectorAll(LISTS[kind] + " .block").forEach(b => {
+  ["exp", "edu"].forEach(kind => document.querySelectorAll(LISTS[kind] + " .block").forEach(b => {
     const von = b.querySelector('[data-k="von"]'), bis = b.querySelector('[data-k="bis"]');
     if (von && bis && !bis.disabled && RE_MONTH.test(von.value) && RE_MONTH.test(bis.value) && bis.value < von.value) add(bis, "„Bis“ darf nicht vor „Von“ liegen.");
   }));
   list.sort((a, b) => (a.el.compareDocumentPosition(b.el) & Node.DOCUMENT_POSITION_FOLLOWING) ? -1 : 1);
   return list;
 }
-function focusTarget(p){ return p.el._fb ? p.el.nextElementSibling.querySelector("select") : p.el; }
+function focusTarget(p){ return p.el; }
 function goTo(p){
   const t = focusTarget(p);
   t.scrollIntoView({behavior: "smooth", block: "center"});
@@ -21501,7 +21592,7 @@ function render(list, scroll){
   document.querySelectorAll(".invalid").forEach(e => e.classList.remove("invalid"));
   const ul = $("#errList"); ul.textContent = "";
   list.forEach(p => {
-    (p.el._fb ? [...p.el.nextElementSibling.querySelectorAll("select")] : [p.el]).forEach(t => t.classList.add("invalid"));
+    p.el.classList.add("invalid");
     const m = document.createElement("div"); m.className = "verr"; m.textContent = p.msg; p.cell.appendChild(m);
     const li = document.createElement("li"), a = document.createElement("a");
     a.href = "#"; a.textContent = p.name;
@@ -21526,7 +21617,7 @@ function badDates(d){
     if (!RE_MONTH.test(e.von || "")) bad.push(name + " " + (i + 1) + ": Von");
     if (!(live && e.heute) && !RE_MONTH.test(e.bis || "")) bad.push(name + " " + (i + 1) + ": Bis");
   });
-  chk(d.exp, "Station", true); chk(d.edu, "Ausbildung", false); chk(d.uni, "Studium", false);
+  chk(d.exp, "Station", true); chk(d.edu, "Ausbildung", false);
   return bad;
 }
 
@@ -21539,7 +21630,7 @@ $("#form").addEventListener("submit", async ev => {
   if (validateForm(true).length) return;
   const photoFile = $("#photo").files[0];
   if (!photoFile) { setStatus("err", "Bitte laden Sie ein Foto hoch."); return; }
-  const exp = collect("exp"), edu = collect("edu"), uni = collect("uni");
+  const exp = collect("exp"), edu = collect("edu"), uni = [];
   if (!exp.length || !edu.length) { setStatus("err", "Bitte geben Sie mindestens eine Berufserfahrung und eine Ausbildung an."); return; }
 
   const fd = Object.fromEntries(new FormData(form).entries());
